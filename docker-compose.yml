@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  # --- Subsystem A: Database Storage Layer ---
+  postgres-db:
+    image: postgres:16-alpine
+    container_name: enterprise_postgres
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      # Automatically runs your SQL schema on first container initialization
+      - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql
+      - postgres_data_dash:/var/lib/postgresql/data
+    networks:
+      - app-network
+
+  # --- Subsystem B: Python Dash Analytics Engine ---
+  dash-engine:
+    image: python:3.11-slim
+    container_name: enterprise_dash
+    restart: unless-stopped
+    ports:
+      - "8050:8050"
+    env_file: .env
+    environment:
+      # Redirect database host connection string from 'localhost' to the service container name
+      - DB_URI=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DB_HOST}:${DB_PORT}/${POSTGRES_DB}
+      - APP_SHARED_SECRET=${APP_SHARED_SECRET}
+    volumes:
+      - ./python:/app
+      - ./requirements.txt:/app/requirements.txt
+    working_dir: /app
+    # Install dependencies inside the container container grid, then launch the service script
+    command: >
+      sh -c "pip install --no-cache-dir -r requirements.txt && python app.py"
+    depends_on:
+      - postgres-db
+    networks:
+      - app-network
+
+  # --- Subsystem C: Web Frontend Shell ---
+  php-frontend:
+    image: php:8.5-apache
+    container_name: enterprise_php
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - APP_SHARED_SECRET=${APP_SHARED_SECRET}
+    ports:
+      - "80:80"
+    volumes:
+      - ./php:/var/www/html
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  postgres_data:

@@ -1,0 +1,46 @@
+# ==========================================
+# 1. Secrets & Environment Variables
+# ==========================================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ==========================================
+# 2. Python & Virtual Environments
+# ==========================================
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.coverage
+
+# ==========================================
+# 3. PHP & Composer
+# ==========================================
+vendor/
+composer.phar
+*.log
+
+# ==========================================
+# 4. Docker & Local Database Volumes
+# ==========================================
+postgres_data/
+pgdata/
+*.sql.gz
+*.dump
+
+# ==========================================
+# 5. IDE & Operating System Files
+# ==========================================
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
