@@ -1,4 +1,6 @@
-<?php
+<?php 
+session_start();
+
 // Prevent unauthorized browser visits directly navigating to this endpoint routing rule
 if (!isset($_SERVER['HTTP_HX_REQUEST'])) {
     http_response_code(403);
@@ -9,6 +11,8 @@ $secret    = getenv('APP_SHARED_SECRET');
 $userId    = urlencode($_GET['user_id'] ?? '');
 $startDate = urlencode($_GET['start_date'] ?? null);
 $endDate   = urlencode($_GET['end_date'] ?? null);
+
+$_SESSION['user_id'] = (int) $userId;
 
 if($startDate && $endDate) {
     // Combine them back into YYYY-MM-DD_to_YYYY-MM-DD format

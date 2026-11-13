@@ -86,7 +86,8 @@ $csrfToken = $_SESSION['csrf_token'];
                   hx-get="dash-fragment.php" 
                   hx-target="#dash-mount" 
                   hx-swap="innerHTML"
-                  hx-indicator="#form-spinner"
+                  hx-indicator="#form-spinner" 
+                  hx-on::after-request="syncNavigationCard()" 
                   class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                 
                 <!-- Input User ID -->
@@ -151,7 +152,8 @@ $csrfToken = $_SESSION['csrf_token'];
         <div id="dash-mount" 
              class="min-h-[500px] w-full bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col justify-center items-center transition-all duration-200"
              hx-get="dash-fragment.php" 
-             hx-vals='{"user_id": "<?php echo $current_user_id; ?>", "date_range": "<?php echo $selected_range; ?>"}'
+             hx-include="#current-user-id" 
+             hx-vals='{"date_range": "<?php echo $selected_range; ?>"}'
              hx-trigger="load, refreshDash" 
              hx-target="#dash-mount" 
              hx-swap="innerHTML"
@@ -332,7 +334,13 @@ $csrfToken = $_SESSION['csrf_token'];
         const startDate = document.getElementById('start_date').value;
         const endDate   = document.getElementById('end_date').value;
 
-        // 1. Update Navigation Card Badges
+        // 1. Synchronize the hidden input #current-user-id
+        const hiddenUserId = document.getElementById('current-user-id');
+        if (hiddenUserId) {
+            hiddenUserId.value = uid;
+        }
+
+        // 2. Update Navigation Card Badges
         const userBadge  = document.getElementById('nav-user-badge');
         const rangeBadge = document.getElementById('nav-range-badge');
 
@@ -343,25 +351,19 @@ $csrfToken = $_SESSION['csrf_token'];
             rangeBadge.textContent = `Range Window: ${startDate} to ${endDate}`;
         }
 
-        // 2. Also keep the CRUD Modal header label in sync if present
+        // 3. Also keep the CRUD Modal header label in sync if present
         const modalLabel = document.getElementById('modal-session-label');
         if (modalLabel) {
             modalLabel.textContent = `User #${uid}`;
         }
     }
 
+    syncNavigationCard();
+
     // Sync PHP $_SESSION['user_id'] when User ID dropdown changes
     document.getElementById('user_id').addEventListener('change', function() {
-        syncNavigationCard();
         fetch(`index.php?set_session_user=${encodeURIComponent(this.value)}`);
     });
-
-    // Update Navigation Card live when Start Date or End Date changes
-    document.getElementById('start_date').addEventListener('change', syncNavigationCard);
-    document.getElementById('end_date').addEventListener('change', syncNavigationCard);
-
-    // Ensure badges also sync on form submit
-    document.getElementById('filter-form').addEventListener('htmx:beforeRequest', syncNavigationCard);
 
 // Toast CRUD info
     let toastTimeout;
@@ -421,12 +423,7 @@ $csrfToken = $_SESSION['csrf_token'];
         if (event.data.mode === 'edit' && event.data.row) {
             setTimeout(() => populateEditForm(event.data.row), 150);
         }
-    });
-
-    // Automatically attach the session CSRF token to every htmx request
-    document.body.addEventListener('htmx:configRequest', function(event) {
-        event.detail.headers['X-CSRF-Token'] = '<?php echo $csrfToken; ?>';
-    });
+    });   
 
     // 1. Attach Session CSRF Token globally to all htmx requests
     document.body.addEventListener('htmx:configRequest', function(event) {
@@ -437,10 +434,11 @@ $csrfToken = $_SESSION['csrf_token'];
     function openCrudModal() {
         resetCrudForm();
         const modal = document.getElementById('crud-modal');
+        const uid = document.getElementById('current-user-id').value;
         modal.classList.remove('hidden');
         modal.classList.add('flex');
 
-        htmx.ajax('GET', 'crud-handler.php?action=list&user_id=<?= $current_user_id; ?>', '#modal-records-list');
+        htmx.ajax('GET', 'crud-handler.php?action=list&user_id=' + uid, '#modal-records-list');
     }
 
     // 3. Close Modal
