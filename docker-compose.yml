@@ -1,20 +1,27 @@
-version: '3.8'
-
 services:
-  # --- Subsystem A: Database Storage Layer ---
+  # --- Subsystem A: PostgreSQL Database Layer ---
   postgres-db:
     image: postgres:16-alpine
     container_name: enterprise_postgres
     restart: unless-stopped
     env_file: .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
-      # Automatically runs your SQL schema on first container initialization
+      # Automatically executes schema.sql on first container initialization
       - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql
-      - postgres_data_dash:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     networks:
       - app-network
 
-  # --- Subsystem B: Python Dash Analytics Engine ---
+  # --- Subsystem B: Python Dash Analytics Engine (Gunicorn) ---
   dash-engine:
     image: python:3.11-slim
     container_name: enterprise_dash
@@ -23,33 +30,36 @@ services:
       - "8050:8050"
     env_file: .env
     environment:
-      # Redirect database host connection string from 'localhost' to the service container name
       - DB_URI=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DB_HOST}:${DB_PORT}/${POSTGRES_DB}
       - APP_SHARED_SECRET=${APP_SHARED_SECRET}
+      - ALLOWED_FRAME_ORIGIN=${ALLOWED_FRAME_ORIGIN}
     volumes:
+      # Mounts python/ directory (containing app.py and requirements.txt) directly to /app
       - ./python:/app
-      - ./requirements.txt:/app/requirements.txt
     working_dir: /app
-    # Install dependencies inside the container container grid, then launch the service script
     command: >
-      sh -c "pip install --no-cache-dir -r requirements.txt && python app.py"
+      sh -c "pip install --no-cache-dir -r requirements.txt && gunicorn --workers 4 --bind 0.0.0.0:8050 app:server"
     depends_on:
-      - postgres-db
+      postgres-db:
+        condition: service_healthy
     networks:
       - app-network
 
-  # --- Subsystem C: Web Frontend Shell ---
+  # --- Subsystem C: PHP Frontend & Session CRUD Shell ---
   php-frontend:
     image: php:8.5-apache
     container_name: enterprise_php
     restart: unless-stopped
-    env_file: .env
-    environment:
-      - APP_SHARED_SECRET=${APP_SHARED_SECRET}
     ports:
-      - "80:80"
+      - "8000:80"
+    env_file: .env
     volumes:
       - ./php:/var/www/html
+    command: >
+      sh -c "apt-get update && apt-get install -y libpq-dev && docker-php-ext-install pdo pdo_pgsql && apache2-foreground"
+    depends_on:
+      postgres-db:
+        condition: service_healthy
     networks:
       - app-network
 

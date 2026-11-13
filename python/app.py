@@ -26,6 +26,7 @@ app.layout = html.Div(style={'fontFamily': 'ui-sans-serif, system-ui, sans-serif
     
     # Grid Flex-columns layout wrapper mapping to device windows
     html.Div(
+        id='dash-root-container',
         style={'display': 'flex', 'flexWrap': 'wrap', 'gap': '24px', 'width': '100%'},
         children=[
             # Column 1: Donut Graphic Mount Target
@@ -152,6 +153,14 @@ def initial_data_load(search_string):
 # PIPELINE STEP B: Dynamic Client-Side In-Memory Filtering Loop
 # ----------------------------------------------------------------------------------
 @app.callback(
+    Output('donut-chart', 'clickData'),
+    Input('reset-chart-filter-btn', 'n_clicks'),
+    prevent_initial_call=True
+)
+def reset_chart_selection(n_clicks):
+    return None
+
+@app.callback(
     Output('table-output-mount', 'children'),
     [Input('donut-chart', 'clickData'),
      Input('postgres-data-cache', 'data')]
@@ -161,6 +170,7 @@ def filter_table_by_chart_click(click_data, cached_records):
         return html.P("No records found in storage context pool.")
         
     df = pd.DataFrame(cached_records)
+    selected_item = None
 
     # Listen to click interaction event hooks map metrics arrays
     if click_data and 'points' in click_data:
@@ -168,13 +178,52 @@ def filter_table_by_chart_click(click_data, cached_records):
             selected_item = click_data['points'][0]['label']
             df = df[df['item_name'] == selected_item]
         except Exception:
-            pass 
+            selected_item = None 
+
+    # Header label & Reset button (visible only when filtered, or always rendered for callback binding)
+    filter_badge = (
+        f"Transaction Ledger — Filtered: {selected_item}"
+        if selected_item
+        else f"Transaction Ledger (All {len(df)} records)"
+    )
+
+    reset_btn_style = {
+        'display': 'inline-block' if selected_item else 'none',
+        'backgroundColor': '#F1F5F9',
+        'color': '#334155',
+        'border': '1px solid #CBD5E1',
+        'borderRadius': '8px',
+        'padding': '6px 12px',
+        'fontSize': '0.8rem',
+        'fontWeight': '600',
+        'cursor': 'pointer'
+    }
+
+    # # Add an 'actions' column with Markdown links for Edit and Delete
+    # df_display = df.copy()
+    # df_display['actions'] = "✏️ Edit  |  🗑️ Delete"
+
+    # columns_config = [
+    #     {"name": column.replace('_', ' ').title(), "id": column}
+    #     for column in df.columns
+    # ]
+    # # Append the interactive Actions column
+    # columns_config.append({"name": "Actions", "id": "actions"})
 
     # Construct the Tailwind CSS Styled Slate DataTable
     ui_data_grid = dash_table.DataTable(
+        id='transactions-datatable',
         data=df.to_dict('records'),
         columns=[{"name": column.replace('_', ' ').title(), "id": column} for column in df.columns],
-        page_size=6,
+        # data=df_display.to_dict('records'),
+        # columns=columns_config,
+        # ---AUTO PAGINATION CONFIGURATION ---
+        page_action='native',   # Enables Dash's built-in automatic pagination
+        page_current=0,         # Starting from the first page (index 0)
+        page_size=5,            # Displays 5 rows per page (change as needed)
+        
+        # Optional: Enable the automatic column sorting feature
+        sort_action='native',
         style_table={'border': '1px solid #E2E8F0', 'borderRadius': '12px', 'overflow': 'hidden'},
         style_header={
             'backgroundColor': '#F8FAFC',
@@ -193,10 +242,129 @@ def filter_table_by_chart_click(click_data, cached_records):
         },
         style_data_conditional=[
             {'if': {'row_index': 'odd'}, 'backgroundColor': '#FFFFFF'},
-            {'if': {'row_index': 'even'}, 'backgroundColor': '#FAFAFA'}
+            {'if': {'row_index': 'even'}, 'backgroundColor': '#FAFAFA'},
+            # # Style the Actions column to look like interactive buttons
+            # {
+            #     'if': {'column_id': 'actions'},
+            #     'color': '#4F46E5',
+            #     'fontWeight': '600',
+            #     'cursor': 'pointer',
+            #     'textAlign': 'right'
+            # }
         ]
     )
-    return ui_data_grid
+
+    # Wrap the table with a top bar containing the "+ Insert Transaction" button
+    return html.Div([
+        html.Div(
+            style={'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center', 'marginBottom': '12px', 'gap': '8px'},
+            children=[
+                html.Span(filter_badge, style={'fontWeight': '600', 'color': '#1E293B', 'fontSize': '0.9rem'}),
+                html.Div(
+                    style={'display': 'flex', 'gap': '8px'},
+                    children=[
+                        html.Button(
+                            "↺ Show All",
+                            id="reset-chart-filter-btn",
+                            n_clicks=0,
+                            style=reset_btn_style
+                        ),
+                        html.Button(
+                            "+ Insert / Manage Data",
+                            id="dash-open-crud-btn",
+                            n_clicks=0,
+                            style={
+                                'backgroundColor': '#4F46E5',
+                                'color': '#FFFFFF',
+                                'border': 'none',
+                                'borderRadius': '8px',
+                                'padding': '6px 14px',
+                                'fontSize': '0.8rem',
+                                'fontWeight': '600',
+                                'cursor': 'pointer'
+                            }
+                        )
+                    ]
+                )
+            ]
+        ),
+        ui_data_grid,
+        dcc.Store(id='parent-modal-trigger')
+    ])
+
+# ----------------------------------------------------------------------------------
+# PIPELINE STEP C: Bridge Dash CRUD Button & Table Row Clicks to Parent PHP Modal
+# ----------------------------------------------------------------------------------
+app.clientside_callback(
+    """
+    function(n_clicks, active_cell, table_data) {
+        const ctx = dash_clientside.callback_context;
+        if (!ctx.triggered.length) {
+            return window.dash_clientside.no_update;
+        }
+        
+        const triggerId = ctx.triggered[0].prop_id;
+        
+        // 1. User clicked "+ Insert / Manage Data" button above the table
+        if (triggerId === 'dash-open-crud-btn.n_clicks' && n_clicks > 0) {
+            window.parent.postMessage({ type: 'OPEN_CRUD_MODAL', mode: 'create' }, '*');
+        }
+        
+        // 2. User clicked the "Actions" column on a specific table row
+        if (triggerId === 'transactions-datatable.active_cell' && active_cell && active_cell.column_id === 'actions') {
+            const row = table_data[active_cell.row];
+            window.parent.postMessage({
+                type: 'OPEN_CRUD_MODAL',
+                mode: 'edit',
+                row: {
+                    transaction_id: row.transaction_id,
+                    item_name: row.item_name,
+                    amount: row.amount,
+                    fmt_date: row.purchase_date.replace(' ', 'T')
+                }
+            }, '*');
+        }
+        
+        return null;
+    }
+    """,
+    Output('parent-modal-trigger', 'data'),
+    [Input('dash-open-crud-btn', 'n_clicks'),
+     Input('transactions-datatable', 'active_cell')],
+    [State('transactions-datatable', 'data')],
+    prevent_initial_call=True
+)
+
+# ----------------------------------------------------------------------------------
+# PIPELINE STEP D: Auto-Resize Parent Iframe Height via ResizeObserver
+# ----------------------------------------------------------------------------------
+app.clientside_callback(
+    """
+    function(children) {
+        const container = document.getElementById('dash-root-container');
+        if (!container) return window.dash_clientside.no_update;
+
+        // Attach ResizeObserver once to track any chart, table, or pagination height changes
+        if (!window._dashResizeObserverAttached) {
+            window._dashResizeObserverAttached = true;
+            const sendHeight = () => {
+                const height = Math.max(
+                    container.scrollHeight,
+                    document.body.scrollHeight
+                );
+                window.parent.postMessage({ type: 'DASH_RESIZE', height: height }, '*');
+            };
+
+            const observer = new ResizeObserver(sendHeight);
+            observer.observe(container);
+            sendHeight();
+        }
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output('dash-root-container', 'data-resize-ready'),
+    Input('table-output-mount', 'children')
+)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8050, debug=True)

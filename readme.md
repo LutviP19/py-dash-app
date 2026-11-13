@@ -17,15 +17,22 @@ The application utilizes **htmx** for asynchronous loading and features a **zero
 ## 📂 Project Structure
 
 ```text
-my-enterprise-app/
-├── docker-compose.yml     # Multi-container Docker orchestration manifest
-├── schema.sql             # Database schema definition and seed data
+py-dash-app/
+├── .env                       # Production secrets (DB credentials, HMAC key, CSP origins)
+├── .env.example               # Template environment file for safe version control
+├── .gitignore                 # Excludes .env, .venv, __pycache__, and DB volumes
+├── docker-compose.yml         # Multi-container orchestration (Postgres, Dash + Gunicorn, PHP)
+├── README.md                  # Full setup, security hardening, and architecture documentation
+├── schema.sql                 # PostgreSQL table DDL, composite index, and seed data
 ├── php/
-│   ├── index.php          # Main Tailwind/htmx user view portal
-│   └── dash-fragment.php  # Asynchronous iframe routing component
+│   ├── index.php              # Main Tailwind/htmx portal, filter form, auto-resizing iframe & CRUD modal
+│   ├── dash-fragment.php      # Asynchronous htmx iframe loader with HMAC signing & cache-busting
+│   └── crud-handler.php       # Session-scoped & CSRF-protected Insert/Update/Delete backend
 └── python/
-    └── app.py             # Python Dash application microservice script
-    └── requirements.txt   # Python environment dependencies
+    ├── .venv/                 # Local isolated Python virtual environment (ignored by Git)
+    ├── app.py                 # Dash microservice (Donut chart, cross-filtering, pagination, ResizeObserver)
+    └── requirements.txt       # Python dependencies (dash, pandas, plotly, sqlalchemy, psycopg2, gunicorn)
+
 ```
 
 ---
