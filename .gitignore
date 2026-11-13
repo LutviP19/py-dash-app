@@ -6,6 +6,8 @@
 !.env.example
 *.pem
 *.key
+*.dev
+*.sample
 
 # ==========================================
 # 2. Python & Virtual Environments
