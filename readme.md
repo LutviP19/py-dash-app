@@ -4,6 +4,10 @@ Analytics dashboard that integrates a lightweight **PHP frontend** shell with a 
 
 The application utilizes **htmx** for asynchronous loading and features a **zero-latency client-side cross-filtering** mechanism: clicking a segment on the Donut Chart instantly updates the detailed transaction ledger table without firing additional database queries.
 
+## Preview
+![Dashboard](/assets/Screenshot_Dashboard.png)
+![CRUD](/assets/Screenshot_CRUD.png)
+
 ## 🏗️ Architecture Overview
 
 - **Frontend Shell (`PHP 8.5 + Tailwind CSS`)**: Renders the corporate framework UI. Uses htmx to automatically fetch the dashboard fragment on page load.
