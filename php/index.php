@@ -309,24 +309,163 @@ $csrfToken = $_SESSION['csrf_token'];
         </div>
     </div>
 
+    <!-- ===================================================================== -->
+    <!-- CUSTOM DELETE CONFIRMATION MODAL                                      -->
+    <!-- ===================================================================== -->
+    <div id="delete-confirm-modal" 
+        class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+        <div class="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
+            
+            <div class="p-6">
+                <div class="flex items-start gap-4">
+                    <!-- Warning Icon -->
+                    <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-600 font-bold">
+                        ⚠️
+                    </div>
+                    <div class="space-y-1">
+                        <h3 class="text-base font-bold text-slate-900">Delete Transaction</h3>
+                        <p class="text-sm text-slate-500">
+                            Are you sure you want to permanently delete 
+                            <strong id="delete-item-label" class="text-slate-800"></strong>? 
+                            This action cannot be undone.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Action Buttons -->
+            <div id="delete-confirm-modal" 
+                class="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
+                <button type="button" 
+                        onclick="closeDeleteConfirmModal()" 
+                        class="px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer">
+                    Cancel
+                </button>
+                <button type="button" 
+                        id="confirm-delete-btn"
+                        onclick="executePendingDelete()" 
+                        class="px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-xs transition-colors cursor-pointer">
+                    Yes, Delete
+                </button>
+            </div>
+
+        </div>
+    </div>
+
 <script>
 // Listen for dynamic height updates sent from inside the Python Dash iframe
-    window.addEventListener('message', function(event) {
-        if (!event.data || event.data.type !== 'DASH_RESIZE') return;
+    let pendingDeleteRow = null;
 
-        const iframe = document.getElementById('dash-iframe');
-        const mount  = document.getElementById('dash-mount');
-
-        if (iframe && event.data.height > 0) {
-            // Add a small 16px buffer to prevent bottom clipping
-            const newHeight = Math.ceil(event.data.height) + 16;
-            iframe.style.height = `${newHeight}px`;
+    function openDeleteConfirmModal(row) {
+        pendingDeleteRow = row;
+        const label = row.amount 
+            ? `"${row.item_name}" ($${parseFloat(row.amount).toFixed(2)})`
+            : `"${row.item_name}"`;
             
-            if (mount) {
-                mount.style.minHeight = `${newHeight}px`;
+        document.getElementById('delete-item-label').textContent = label;
+
+        const modal = document.getElementById('delete-confirm-modal');
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    }
+
+    function closeDeleteConfirmModal() {
+        pendingDeleteRow = null;
+        const modal = document.getElementById('delete-confirm-modal');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
+
+    function executePendingDelete() {
+        if (!pendingDeleteRow) return;
+
+        const { transaction_id, source } = pendingDeleteRow;
+        const uid = document.getElementById('current-user-id').value;
+        const confirmBtn = document.getElementById('confirm-delete-btn');
+
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Deleting...';
+
+        const formData = new FormData();
+        formData.append('action', 'delete');
+        formData.append('transaction_id', transaction_id);
+        formData.append('user_id', uid);
+
+        fetch('crud-handler.php', {
+            method: 'POST',
+            headers: {
+                'X-CSRF-Token': '<?php echo htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8'); ?>'
+            },
+            body: formData
+        })
+        .then(async response => {
+            const html = await response.text();
+            if (!response.ok) throw new Error(html || 'Delete failed');
+
+            closeDeleteConfirmModal();
+
+            if (source === 'crud-modal') {
+                // 1. Update the modal's transaction table immediately & show toast
+                document.getElementById('modal-records-list').innerHTML = html;
+                htmx.process(document.getElementById('modal-records-list'));
+                displayModalToast('success', 'Transaction deleted.');
+            } else {
+                // 2. Deleted directly from Dash iframe -> reload Dash immediately
+                const filterForm = document.getElementById('filter-form');
+                const params = filterForm ? Object.fromEntries(new FormData(filterForm)) : {};
+                htmx.ajax('GET', 'dash-fragment.php', {
+                    target: '#dash-mount',
+                    swap: 'innerHTML',
+                    values: params
+                });
+            }
+        })
+        .catch(err => {
+            closeDeleteConfirmModal();
+            if (source === 'crud-modal') {
+                displayModalToast('error', err.message);
+            } else {
+                alert('Error deleting transaction: ' + err.message);
+            }
+        })
+        .finally(() => {
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = 'Yes, Delete';
+        });
+    }
+
+    window.addEventListener('message', function(event) {
+        if (!event.data || !event.data.type) return;
+
+        // 1. Auto-resize iframe height
+        if (event.data.type === 'DASH_RESIZE') {
+            const iframe = document.getElementById('dash-iframe');
+            const mount  = document.getElementById('dash-mount');
+
+            if (iframe && event.data.height > 0) {
+                const newHeight = Math.ceil(event.data.height) + 16;
+                iframe.style.height = `${newHeight}px`;
+                
+                if (mount) {
+                    mount.style.minHeight = `${newHeight}px`;
+                }
             }
         }
+
+        // 2. Open Modal in Create or Edit mode
+        if (event.data.type === 'OPEN_CRUD_MODAL') {
+            openCrudModal();
+            if (event.data.mode === 'edit' && event.data.row) {
+                setTimeout(() => populateEditForm(event.data.row), 150);
+            }
+        }
+        
+        // 3. Direct Delete triggered from the Dash DataTable row
+        if (event.data.type === 'DELETE_TRANSACTION' && event.data.row) {
+            openDeleteConfirmModal(event.data.row);
+        }
     });
+
 
 // Sync Header Navigation Card info
     function syncNavigationCard() {

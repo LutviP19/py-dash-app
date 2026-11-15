@@ -170,10 +170,12 @@ $shownCount = count($rows);
                                 Edit
                             </button>
                             <button type="button"
-                                    hx-post="crud-handler.php"
-                                    hx-vals='{"action": "delete", "transaction_id": "<?php echo (int)$row['transaction_id']; ?>", "user_id": "<?php echo (int)$sessionUserId; ?>"}'
-                                    hx-confirm="Are you sure you want to delete '<?php echo htmlspecialchars($row['item_name'], ENT_QUOTES); ?>'?"
-                                    hx-target="#modal-records-list"
+                                    onclick='openDeleteConfirmModal(<?php echo json_encode([
+                                        "transaction_id" => (int)$row["transaction_id"],
+                                        "item_name"      => $row["item_name"],
+                                        "amount"         => $row["amount"],
+                                        "source"         => "crud-modal"
+                                    ], JSON_HEX_APOS | JSON_HEX_QUOT); ?>)'
                                     class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-rose-50 text-rose-700 hover:bg-rose-100 transition-colors cursor-pointer">
                                 Delete
                             </button>

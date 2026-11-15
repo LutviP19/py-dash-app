@@ -7,6 +7,7 @@ The application utilizes **htmx** for asynchronous loading and features a **zero
 ## Preview
 ![Dashboard](/assets/Screenshot_Dashboard.png)
 ![CRUD](/assets/Screenshot_CRUD.png)
+![Confirm Delete](/assets/Screenshot_Confirm_Delete.png)
 
 ## 🏗️ Architecture Overview
 
